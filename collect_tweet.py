@@ -2,6 +2,7 @@ import re
 import os
 import tweepy
 import MeCab
+from math import inf
 
 INFILE = "./data/input.txt"
 OUTFILE = "./data/output.txt"
@@ -23,9 +24,31 @@ class Tweet:
         self.user_id = status.user.id
 
 
-class StreamListener(tweepy.StreamListener):
-    def __init__(self, api):
-        self.api = api
+class Stream(tweepy.Stream):
+    def __init__(self, consumer_key, consumer_secret, access_token,
+                 access_token_secret, *, chunk_size=512, daemon=False,
+                 max_retries=inf, proxy=None, verify=True):
+        self.consumer_key = consumer_key
+        self.consumer_secret = consumer_secret
+        self.access_token = access_token
+        self.access_token_secret = access_token_secret
+        self.chunk_size = chunk_size
+        self.daemon = daemon
+        self.max_retries = max_retries
+        self.proxies = {"https": proxy} if proxy else {}
+        self.verify = verify
+
+        self.running = False
+        self.session = None
+        self.thread = None
+        self.user_agent = (
+            f"Python "
+            f"Requests "
+            f"Tweepy/{tweepy.__version__}"
+        )
+        auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
+        auth.set_access_token(access_token, access_token_secret)
+        self.api = tweepy.API(auth)
         self.saved = 0
         self.lookup_ids = []
         self.replies = {}
@@ -42,7 +65,7 @@ class StreamListener(tweepy.StreamListener):
         self.replies[status.in_reply_to_status_id] = Tweet(status)
         # collect 100 tweets
         if len(self.lookup_ids) >= 100:
-            statuses = self.api.statuses_lookup(self.lookup_ids)
+            statuses = self.api.lookup_statuses(self.lookup_ids)
             for status in statuses:
                 if not self.is_valid_tweet(status):
                     continue
@@ -87,15 +110,11 @@ class StreamListener(tweepy.StreamListener):
 
 
 def main():
-    AT = os.getenv("TW_AT")
-    AS = os.getenv("TW_AS")
     CK = os.getenv("TW_CK")
     CS = os.getenv("TW_CS")
-    auth = tweepy.OAuthHandler(CK, CS)
-    auth.set_access_token(AT, AS)
-    api = tweepy.API(auth)
-    listener = StreamListener(api)
-    streaming = tweepy.Stream(auth, listener)
+    AT = os.getenv("TW_AT")
+    AS = os.getenv("TW_AS")
+    streaming = Stream(CK, CS, AT, AS)
     while True:
         try:
             streaming.sample()
